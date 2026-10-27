@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>เกมการ์ด: จับคู่ตัวส่วนร่วม</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Mali:wght@400;600;700&family=Prompt:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            /* Use a cute kid-friendly font for headings, prompt for numbers */
+            font-family: 'Mali', cursive;
+            background-color: #fef08a; /* Light yellow background */
+            background-image: 
+                radial-gradient(circle at 10% 20%, #fde047 10px, transparent 11px),
+                radial-gradient(circle at 90% 80%, #fde047 10px, transparent 11px),
+                radial-gradient(circle at 50% 50%, #fef9c3 100px, transparent 101px);
+            background-size: 100% 100%, 100% 100%, 400px 400px;
+            background-attachment: fixed;
+            overscroll-behavior: none;
+        }
+        
+        .math-font {
+            font-family: 'Prompt', sans-serif;
+        }
+
+        /* Thick borders and flat shadows for the board game look */
+        .board-element {
+            border: 4px solid #1f2937;
+            box-shadow: 4px 4px 0 0 #1f2937;
+        }
+
+        .btn-game {
+            transition: all 0.1s ease;
+            border: 4px solid #1f2937;
+            box-shadow: 0 6px 0 #1f2937;
+        }
+        .btn-game:active:not(:disabled) {
+            transform: translateY(6px);
+            box-shadow: 0 0 0 #1f2937;
+        }
+        .btn-game:disabled {
+            filter: grayscale(0.5);
+            cursor: not-allowed;
+            box-shadow: 0 6px 0 #4b5563;
+        }
+
+        /* Animations */
+        @keyframes popIn {
+            0% { transform: scale(0.5); opacity: 0; }
+            70% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-pop { animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        .animate-float { animation: float 3s ease-in-out infinite; }
+
+        /* Board Path Styles */
+        .path-node {
+            width: 80px;
+            height: 80px;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            font-weight: bold;
+            position: relative;
+            z-index: 10;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .path-node:hover { transform: scale(1.1); }
+        .node-locked { opacity: 0.5; cursor: not-allowed; filter: grayscale(1); }
+        .node-locked:hover { transform: scale(1); }
+        
+        /* Map Connector */
+        .connector-line {
+            position: absolute;
+            background-color: #1f2937;
+            z-index: 1;
+        }
+
+        /* SVG Fraction Pie styling */
+        .pie-chart {
+            filter: drop-shadow(4px 4px 0px rgba(31, 41, 55, 1));
+        }
+
+        #modal-overlay { backdrop-filter: blur(5px); }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col items-center justify-center overflow-hidden text-gray-800 p-4">
+
+    <!-- Header / Title -->
+    <div class="w-full max-w-4xl text-center mb-6 z-10 animate-pop">
+        <div class="inline-block bg-white rounded-full px-6 py-2 board-element mb-2">
+            <span class="text-orange-500 font-bold text-lg">💡 เรียนรู้ผ่านภาพ</span>
+        </div>
+        <h1 class="text-4xl sm:text-5xl font-bold text-white math-font" style="text-shadow: 4px 4px 0 #1f2937, -2px -2px 0 #1f2937, 2px -2px 0 #1f2937, -2px 2px 0 #1f2937, 2px 2px 0 #1f2937;">
+            <span class="text-blue-400">บอร์ดเกม</span><span class="text-green-400">จับคู่</span><span class="text-pink-400">ตัวส่วนร่วม</span>
+        </h1>
+    </div>
+
+    <!-- Screen 1: Map Screen -->
+    <div id="map-screen" class="w-full max-w-4xl bg-green-100 rounded-3xl p-6 sm:p-10 board-element relative overflow-hidden flex flex-col items-center animate-pop">
+        <!-- Decoration -->
+        <div class="absolute top-2 left-2 text-4xl opacity-50">🌳</div>
+        <div class="absolute top-10 right-4 text-4xl opacity-50">☁️</div>
+        <div class="absolute bottom-4 left-10 text-4xl opacity-50">🍄</div>
+        <div class="absolute bottom-2 right-2 text-4xl opacity-50">🏫</div>
+
+        <div class="bg-white rounded-2xl p-4 mb-6 board-element text-center max-w-md w-full">
+            <h2 class="text-xl font-bold text-indigo-600 mb-1">ยินดีต้อนรับนักสืบจิ๋ว!</h2>
+            <p class="text-sm text-gray-600">คลิกที่ด่านเพื่อเริ่มทำภารกิจบวกเศษส่วนให้สำเร็จ</p>
+        </div>
+
+        <!-- The Board Grid (Simplified winding path using flex for responsiveness) -->
+        <div class="flex flex-wrap justify-center gap-4 sm:gap-8 max-w-2xl relative z-10 p-4" id="board-path">
+            <!-- Nodes will be generated by JS -->
+        </div>
+    </div>
+
+    <!-- Screen 2: Puzzle Modal (Card) -->
+    <div id="puzzle-modal" class="fixed inset-0 bg-gray-900/60 z-50 hidden flex-col items-center justify-center p-4">
+        <div class="bg-white rounded-3xl w-full max-w-2xl board-element flex flex-col animate-pop relative overflow-hidden">
+            
+            <!-- Modal Header -->
+            <div class="bg-blue-400 p-4 border-b-4 border-gray-800 flex justify-between items-center text-white">
+                <h2 class="text-2xl font-bold font-mali" id="level-title">ด่านที่ 1</h2>
+                <button onclick="closePuzzle()" class="w-10 h-10 bg-red-400 rounded-full border-4 border-gray-800 flex items-center justify-center font-bold text-xl hover:bg-red-300 transition-colors">X</button>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="p-6 sm:p-8 flex flex-col items-center bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCI+CjxjaXJjbGUgY3g9IjIiIGN5PSIyIiByPSIyIiBmaWxsPSIjZjFmNWY5Ii8+Cjwvc3ZnPg==')]">
+                
+                <div class="bg-yellow-100 border-4 border-yellow-400 rounded-xl p-3 mb-6 w-full text-center font-bold text-yellow-800" id="instruction-text">
+                    พิซซ่าถูกหั่นไม่เท่ากัน! กดแบ่งช่องให้เท่ากันก่อนนะ
+                </div>
+
+                <!-- Equation Area -->
+                <div class="flex flex-col sm:flex-row items-center justify-center gap-6 sm:gap-10 mb-8 w-full">
+                    
+                    <!-- Fraction 1 -->
+                    <div class="flex flex-col items-center gap-4 bg-white p-4 rounded-2xl board-element w-full sm:w-auto">
+                        <div id="pie1-container" class="pie-chart"></div>
+                        <div class="flex items-center gap-4">
+                            <div class="text-center math-font font-bold text-2xl">
+                                <div id="f1-num">1</div>
+                                <hr class="border-t-4 border-gray-800 my-1 w-8 mx-auto">
+                                <div id="f1-den" class="text-blue-600">2</div>
+                            </div>
+                            <div class="flex flex-col gap-2">
+                                <button onclick="slicePie(1, 1)" class="bg-green-400 border-2 border-gray-800 rounded-lg px-2 py-1 font-bold text-sm hover:bg-green-300 shadow-[2px_2px_0_0_#1f2937] active:shadow-none active:translate-y-1 transition-all">แบ่งเพิ่ม</button>
+                                <button onclick="slicePie(1, -1)" class="bg-red-400 border-2 border-gray-800 rounded-lg px-2 py-1 font-bold text-sm hover:bg-red-300 shadow-[2px_2px_0_0_#1f2937] active:shadow-none active:translate-y-1 transition-all">คืนค่า</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Operator -->
+                    <div class="text-5xl font-bold math-font text-gray-800 animate-float drop-shadow-md" id="operator-display">+</div>
+
+                    <!-- Fraction 2 -->
+                    <div class="flex flex-col items-center gap-4 bg-white p-4 rounded-2xl board-element w-full sm:w-auto">
+                        <div id="pie2-container" class="pie-chart"></div>
+                        <div class="flex items-center gap-4">
+                            <div class="text-center math-font font-bold text-2xl">
+                                <div id="f2-num">1</div>
+                                <hr class="border-t-4 border-gray-800 my-1 w-8 mx-auto">
+                                <div id="f2-den" class="text-pink-600">4</div>
+                            </div>
+                            <div class="flex flex-col gap-2">
+                                <button onclick="slicePie(2, 1)" class="bg-green-400 border-2 border-gray-800 rounded-lg px-2 py-1 font-bold text-sm hover:bg-green-300 shadow-[2px_2px_0_0_#1f2937] active:shadow-none active:translate-y-1 transition-all">แบ่งเพิ่ม</button>
+                                <button onclick="slicePie(2, -1)" class="bg-red-400 border-2 border-gray-800 rounded-lg px-2 py-1 font-bold text-sm hover:bg-red-300 shadow-[2px_2px_0_0_#1f2937] active:shadow-none active:translate-y-1 transition-all">คืนค่า</button>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Action -->
+                <button id="btn-merge" onclick="tryMerge()" class="btn-game bg-gray-300 text-gray-600 text-2xl font-bold py-4 px-10 rounded-2xl w-full max-w-md" disabled>
+                    รวมร่าง (หาคำตอบ)
+                </button>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Success Feedback Modal -->
+    <div id="success-modal" class="fixed inset-0 bg-gray-900/60 z-[60] hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl p-8 board-element max-w-md w-full text-center flex flex-col items-center">
+            <div class="text-6xl mb-4 animate-float">🎉</div>
+            <h2 class="text-3xl font-bold mb-2 text-green-500">เก่งมาก!</h2>
+            <p class="text-gray-600 mb-6 font-semibold">เมื่อแบ่งพิซซ่าให้มีขนาดช่องเท่ากันแล้ว เราก็จับมารวมกันได้เลย!</p>
+            
+            <div class="flex items-center justify-center gap-4 mb-8 bg-green-50 p-4 rounded-xl border-4 border-green-200 w-full">
+                <div class="math-font font-bold text-2xl text-gray-800" id="success-equation">
+                    <!-- e.g. 2/4 + 1/4 = 3/4 -->
+                </div>
+                <div id="pie-result" class="pie-chart w-20 h-20"></div>
+            </div>
+
+            <button onclick="nextLevel()" class="btn-game bg-blue-500 text-white text-xl font-bold py-3 px-8 rounded-xl w-full">
+                เดินทางต่อ 🚩
+            </button>
+        </div>
+    </div>
+
+    <!-- Game Complete Modal -->
+    <div id="game-complete-modal" class="fixed inset-0 bg-gray-900/80 z-[70] hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl p-8 board-element max-w-md w-full text-center flex flex-col items-center animate-pop">
+            <div class="text-7xl mb-4 animate-float">🏆</div>
+            <h2 class="text-4xl font-bold mb-2 text-yellow-500">ยินดีด้วย!</h2>
+            <p class="text-gray-700 mb-6 text-lg font-semibold">คุณผ่านด่านทั้งหมดและเป็นสุดยอดนักสืบเศษส่วนแล้ว!</p>
+            <div class="flex flex-col sm:flex-row gap-4 w-full">
+                <button onclick="restartGame()" class="btn-game bg-green-500 text-white text-lg font-bold py-3 px-4 rounded-xl flex-1 hover:bg-green-400">
+                    🔄 เล่นใหม่อีกครั้ง
+                </button>
+                <button onclick="exitGame()" class="btn-game bg-red-500 text-white text-lg font-bold py-3 px-4 rounded-xl flex-1 hover:bg-red-400">
+                    🚪 ออกจากเกม
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Exit Screen -->
+    <div id="exit-screen" class="fixed inset-0 bg-[#fef08a] z-[80] hidden flex-col items-center justify-center p-4">
+        <div class="text-6xl mb-4 animate-float">👋</div>
+        <h2 class="text-4xl font-bold text-gray-800 math-font mb-4 text-center">ขอบคุณที่มาร่วมสนุกกันนะ!</h2>
+        <p class="text-xl text-gray-600 mb-8 font-bold text-center">แล้วกลับมาเล่นจับคู่เศษส่วนด้วยกันใหม่นะจ๊ะ</p>
+        <button onclick="location.reload()" class="btn-game bg-blue-500 text-white text-xl font-bold py-3 px-8 rounded-xl">
+            กลับสู่หน้าหลัก
+        </button>
+    </div>
+
+    <script>
+        // Game Data (Matching the board game visual feel)
+        const levels = [
+            { id: 1, f1: {n: 1, d: 2}, f2: {n: 1, d: 4}, op: '+', color: 'bg-blue-400' }, // Level 1
+            { id: 2, f1: {n: 1, d: 3}, f2: {n: 1, d: 6}, op: '+', color: 'bg-pink-400' }, // Level 2
+            { id: 3, f1: {n: 1, d: 2}, f2: {n: 1, d: 3}, op: '+', color: 'bg-yellow-400' }, // Core concept: finding LCM of 2 and 3
+            { id: 4, f1: {n: 3, d: 4}, f2: {n: 1, d: 2}, op: '-', color: 'bg-green-400' }, // Subtraction
+            { id: 5, f1: {n: 2, d: 3}, f2: {n: 1, d: 4}, op: '-', color: 'bg-purple-400' }, // Subtraction finding LCM 12
+            { id: 6, f1: {n: 1, d: 5}, f2: {n: 3, d: 10}, op: '+', color: 'bg-orange-400' }, // Level 6
+            { id: 7, f1: {n: 5, d: 6}, f2: {n: 1, d: 3}, op: '-', color: 'bg-teal-400' }, // Level 7
+            { id: 8, f1: {n: 3, d: 4}, f2: {n: 1, d: 6}, op: '+', color: 'bg-red-400' } // Final Boss LCM 12
+        ];
+
+        let unlockedLevel = 1;
+        let activeLevel = 1;
+        
+        let state = {
+            f1: { baseN: 1, baseD: 1, mult: 1 },
+            f2: { baseN: 1, baseD: 1, mult: 1 },
+            op: '+'
+        };
+
+        // Colors for pies
+        const colorPalette = {
+            f1: '#60a5fa', // blue-400
+            f2: '#f472b6', // pink-400
+            result: '#34d399' // emerald-400
+        };
+
+        // SVG Pie Generator Function
+        function createPieSVG(n, d, colorHex) {
+            let paths = '';
+            const cx = 50, cy = 50, r = 48; // slightly smaller than 50 to fit border
+            
+            // Draw background circle
+            paths += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#ffffff" stroke="#1f2937" stroke-width="4"/>`;
+            
+            if (d === 1) {
+                // Whole pie
+                paths += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${n > 0 ? colorHex : '#ffffff'}" stroke="#1f2937" stroke-width="4"/>`;
+            } else {
+                const anglePerSlice = 360 / d;
+                for (let i = 0; i < d; i++) {
+                    const startAngle = (i * anglePerSlice) - 90;
+                    const endAngle = ((i + 1) * anglePerSlice) - 90;
+                    
+                    const startRad = (Math.PI * startAngle) / 180;
+                    const endRad = (Math.PI * endAngle) / 180;
+                    
+                    const x1 = cx + r * Math.cos(startRad);
+                    const y1 = cy + r * Math.sin(startRad);
+                    const x2 = cx + r * Math.cos(endRad);
+                    const y2 = cy + r * Math.sin(endRad);
+                    
+                    const largeArc = anglePerSlice > 180 ? 1 : 0;
+                    const isFilled = i < n;
+                    const fill = isFilled ? colorHex : '#ffffff';
+                    
+                    // Draw slice
+                    if (d === 2) {
+                        // Special handling for half circle path to look cleaner
+                        const sweep = 1;
+                        const dStr = `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 0 ${sweep} ${x2} ${y2} Z`;
+                        paths += `<path d="${dStr}" fill="${fill}" stroke="#1f2937" stroke-width="4" />`;
+                    } else {
+                        const dStr = `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`;
+                        paths += `<path d="${dStr}" fill="${fill}" stroke="#1f2937" stroke-width="4" />`;
+                    }
+                }
+            }
+            
+            return `<svg viewBox="0 0 100 100" class="w-32 h-32 sm:w-40 sm:h-40 overflow-visible rounded-full">${paths}</svg>`;
+        }
+
+        function initMap() {
+            const mapContainer = document.getElementById('board-path');
+            mapContainer.innerHTML = '';
+            
+            levels.forEach((level, index) => {
+                const isUnlocked = level.id <= unlockedLevel;
+                const node = document.createElement('div');
+                
+                let classes = `path-node board-element text-white ${level.color}`;
+                if (!isUnlocked) {
+                    classes += ` node-locked`;
+                } else if (level.id === unlockedLevel) {
+                    classes += ` animate-float ring-4 ring-yellow-400 ring-offset-4`;
+                }
+
+                node.className = classes;
+                node.innerHTML = `<span>${level.id}</span>`;
+                
+                if (isUnlocked) {
+                    node.onclick = () => openPuzzle(level.id);
+                }
+
+                mapContainer.appendChild(node);
+                
+                // Add connecting arrows except for last
+                if (index < levels.length - 1) {
+                    const arrow = document.createElement('div');
+                    arrow.className = 'text-3xl text-gray-800 mx-2 self-center math-font font-bold';
+                    arrow.innerText = '→';
+                    mapContainer.appendChild(arrow);
+                }
+            });
+        }
+
+        function openPuzzle(levelId) {
+            activeLevel = levelId;
+            const levelData = levels[levelId - 1];
+            
+            state.f1 = { baseN: levelData.f1.n, baseD: levelData.f1.d, mult: 1 };
+            state.f2 = { baseN: levelData.f2.n, baseD: levelData.f2.d, mult: 1 };
+            state.op = levelData.op;
+
+            document.getElementById('level-title').textContent = `ด่านที่ ${levelId}`;
+            document.getElementById('operator-display').textContent = state.op;
+
+            updatePuzzleUI();
+            
+            const modal = document.getElementById('puzzle-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closePuzzle() {
+            const modal = document.getElementById('puzzle-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function slicePie(fractionNum, delta) {
+            if (fractionNum === 1) {
+                state.f1.mult = Math.max(1, Math.min(6, state.f1.mult + delta));
+            } else {
+                state.f2.mult = Math.max(1, Math.min(6, state.f2.mult + delta));
+            }
+            updatePuzzleUI();
+        }
+
+        function updatePuzzleUI() {
+            const curF1 = { n: state.f1.baseN * state.f1.mult, d: state.f1.baseD * state.f1.mult };
+            const curF2 = { n: state.f2.baseN * state.f2.mult, d: state.f2.baseD * state.f2.mult };
+
+            // Update Text
+            document.getElementById('f1-num').textContent = curF1.n;
+            document.getElementById('f1-den').textContent = curF1.d;
+            document.getElementById('f2-num').textContent = curF2.n;
+            document.getElementById('f2-den').textContent = curF2.d;
+
+            // Update SVGs
+            document.getElementById('pie1-container').innerHTML = createPieSVG(curF1.n, curF1.d, colorPalette.f1);
+            document.getElementById('pie2-container').innerHTML = createPieSVG(curF2.n, curF2.d, colorPalette.f2);
+
+            // Merge Logic
+            const btnMerge = document.getElementById('btn-merge');
+            const instruction = document.getElementById('instruction-text');
+            
+            if (curF1.d === curF2.d) {
+                instruction.className = "bg-green-100 border-4 border-green-400 rounded-xl p-3 mb-6 w-full text-center font-bold text-green-800 animate-pop";
+                instruction.textContent = "เยี่ยมมาก! ขนาดช่องเท่ากันแล้ว (หา ค.ร.น. เจอแล้ว) กดรวมร่างเลย!";
+                btnMerge.disabled = false;
+                btnMerge.className = "btn-game bg-green-500 text-white text-2xl font-bold py-4 px-10 rounded-2xl w-full max-w-md animate-pulse";
+            } else {
+                instruction.className = "bg-yellow-100 border-4 border-yellow-400 rounded-xl p-3 mb-6 w-full text-center font-bold text-yellow-800";
+                instruction.textContent = "ชิ้นส่วนยังไม่เท่ากันนะ ลองกดแบ่งเพิ่มเพื่อให้ตัวส่วนด้านล่างเท่ากันสิ";
+                btnMerge.disabled = true;
+                btnMerge.className = "btn-game bg-gray-300 text-gray-500 text-2xl font-bold py-4 px-10 rounded-2xl w-full max-w-md";
+            }
+        }
+
+        function tryMerge() {
+            const curF1 = { n: state.f1.baseN * state.f1.mult, d: state.f1.baseD * state.f1.mult };
+            const curF2 = { n: state.f2.baseN * state.f2.mult, d: state.f2.baseD * state.f2.mult };
+
+            let resN = state.op === '+' ? curF1.n + curF2.n : curF1.n - curF2.n;
+            let resD = curF1.d; // Denominators are equal here
+
+            // Prepare success modal
+            const eqDiv = document.getElementById('success-equation');
+            eqDiv.innerHTML = `<span class="text-blue-600">${curF1.n}/${curF1.d}</span> ${state.op} <span class="text-pink-600">${curF2.n}/${curF2.d}</span> = <span class="text-green-600">${resN}/${resD}</span>`;
+            
+            document.getElementById('pie-result').innerHTML = createPieSVG(resN, resD, colorPalette.result);
+
+            document.getElementById('success-modal').classList.remove('hidden');
+        }
+
+        function nextLevel() {
+            document.getElementById('success-modal').classList.add('hidden');
+            closePuzzle();
+            
+            if (activeLevel === levels.length) {
+                // Show game complete modal instead of simple alert
+                document.getElementById('game-complete-modal').classList.remove('hidden');
+                document.getElementById('game-complete-modal').classList.add('flex');
+            } else {
+                if (activeLevel === unlockedLevel && unlockedLevel < levels.length) {
+                    unlockedLevel++;
+                }
+                initMap();
+            }
+        }
+
+        function restartGame() {
+            document.getElementById('game-complete-modal').classList.add('hidden');
+            document.getElementById('game-complete-modal').classList.remove('flex');
+            unlockedLevel = 1;
+            initMap();
+        }
+
+        function exitGame() {
+            document.getElementById('game-complete-modal').classList.add('hidden');
+            document.getElementById('game-complete-modal').classList.remove('flex');
+            document.getElementById('exit-screen').classList.remove('hidden');
+            document.getElementById('exit-screen').classList.add('flex');
+        }
+
+        // Init on load
+        window.onload = () => {
+            initMap();
+        };
+    </script>
+</body>
+</html>
